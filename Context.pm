@@ -22,7 +22,7 @@ attila <attila@stalphonsos.com>
 =head1 VERSION
 
 $Id: Context.pm,v 1.3 2003/08/09 14:49:54 attila Exp $
-Time-stamp: <2003-09-22 18:32:29 EDT attila@stalphonsos.com>
+Time-stamp: <2011-08-25 23:20:38 attila@stalphonsos.com>
 
 =cut
 
@@ -145,7 +145,8 @@ sub new {
       P => $args{'program'} || $main::P,
       VERSION => $args{'version'} || $main::VERSION,
       MAPS => {},
-      DTD => "-//OASIS//DTD DocBook V3.1//EN",
+      DTD => "-//OASIS//DTD DocBook V4.2//EN",
+      DTD_URL => "http://docbook.org/xml/4.2/docbookx.dtd",
       ROOT_ELT => "book",
     };
   bless($self, $class);

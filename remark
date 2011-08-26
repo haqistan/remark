@@ -4,7 +4,7 @@
 #
 # copyright (c) 2003 by attila <attila@stalphonsos.com>.  all rights reserved.
 #
-# Time-stamp: <2004-09-30 01:08:29 PDT>
+# Time-stamp: <2011-08-25 23:29:05 attila@stalphonsos.com>
 # $Id: remark,v 1.17 2003/08/12 22:06:27 attila Exp $
 #
 # I have a peculiar text file format that I use to write things.  This
@@ -19,7 +19,7 @@ use strict;
 use vars
   qw($VERSION $LOG_FP $LOG_FILE $LOG_STDERR $LOG_TSTAMP_FMT $VERBOSE
      $ORIGINAL_SCRIPT $P @P $DEFAULTS $DESCR $AUTHOR $OPTS $COPYRIGHT
-     $ARGS_DESC $USAGE $QUIET $JADE $PAGESIZE $JADETEX);
+     $ARGS_DESC $USAGE $QUIET $JADE $PAGESIZE $JADETEX $XSLTPROC);
 no strict 'refs';
 BEGIN {
   $ORIGINAL_SCRIPT = $0;
@@ -78,6 +78,8 @@ sub find_jadetex {
   return $jadetex;
 }
 ##
+sub find_xsltproc { return find_binary('xsltproc'); }
+##
 sub find_xdvi { return find_binary('xdvi'); }
 sub find_gv { return find_binary('gv'); }
 sub find_xpdf { return find_binary('xpdf', 'acroread'); }
@@ -93,6 +95,7 @@ $QUIET = 0;
 $DEFAULTS =
   { type => 'docbook',
     result => 'xml',
+    xsltproc => find_xsltproc(),
     jade => find_jade(),
     jadetex => find_jadetex(),
     xdvi => find_xdvi(),
@@ -102,9 +105,9 @@ $DEFAULTS =
   };
 $DESCR = qq{process attila\'s lazy plain-text markup};
 $AUTHOR = q{attila@stalphonsos.com};
-$OPTS = 'hHV:vqSl:t:nruMDPB:R:T:J:j:p:x';
+$OPTS = 'hHV:vqSl:t:nruMDPB:R:T:J:j:p:xX:';
 $COPYRIGHT =
-  '(C) 2003 by attila <attila@stalphonsos.com>. all rights reserved.';
+  '(C) 2003-2011 by attila <attila@stalphonsos.com>. all rights reserved.';
 $ARGS_DESC = 'file...';
 $USAGE = <<__UsAGe__;
 options:
@@ -127,6 +130,7 @@ options:
     -T x   copy the installed remark template into file x
     -J x   use x to invoke jade ($DEFAULTS->{jade})
     -j x   use x to invoke jadetex ($DEFAULTS->{jadetex})
+    -X x   use x to invoke xsltproc ($DEFAULTS->{xsltproc})
     -p x   produce printed output of size x ($DEFAULTS->{page_size})
     -x     invoke appropriate display program on post-processed output
 __UsAGe__
@@ -299,6 +303,11 @@ sub toPDF {
   return toXXX1(shift(@_),'ps','pdf',qq{ps2pdf},undef,'');
 }
 ##
+sub toHTML {
+  my $DOCXSL = '/usr/share/xml/docbook/stylesheet/nwalsh/xhtml/docbook.xsl';
+  return toXXX1(shift(@_),'xml','html',qq{$XSLTPROC $DOCXSL},q{-o});
+}
+##
 sub rem0 {
   my %hash = @_;
   my @rem0 = ();
@@ -319,17 +328,19 @@ sub post_process {
   print STDERR "[Result type: $rtype]\n" unless $QUIET;
   return undef if $rtype eq 'xml';
   my %ctbl = (TEX => 0, DVI => 1, PS => 2, PDF => 3);
-  my %conv = (TeX => 1, DVI => 0, PS => 0, PDF => 0);
+  my %conv = (TeX => 1, DVI => 0, PS => 0, PDF => 0, HTML => 0);
   $conv{DVI} = 1                if $rtype ne 'tex';
   $conv{PS}  = 1                if $rtype eq 'ps';
+  $conv{HTML} = 1               if $rtype eq 'html';
   ($conv{PDF},$conv{PS})=(1,1)  if $rtype eq 'pdf';
   print STDERR "[",join(" -> ",sort { $ctbl{uc($a)} <=> $ctbl{uc($b)} }
                         (rem0(%conv))),"]\n" unless $QUIET;
+  my $HTMLfile = toHTML($fn)    if $conv{HTML};
   my $TeXfile = toTeX($fn)      if $conv{TeX};
   my $DVIfile = toDVI($TeXfile) if $conv{DVI} && defined($TeXfile);
   my $PSfile = toPS($DVIfile)   if $conv{PS}  && defined($DVIfile);
   my $PDFfile = toPDF($PSfile)  if $conv{PDF} && defined ($PSfile);
-  return $PDFfile || $PSfile || $DVIfile || $TeXfile;
+  return $HTMLfile || $PDFfile || $PSfile || $DVIfile || $TeXfile;
 }
 ##
 sub copy_template {
@@ -393,6 +404,7 @@ main: {
   $LOG_FILE = $opts{'l'};
   $JADE = $opts{'J'} || $DEFAULTS->{jade};
   $JADETEX = $opts{'j'} || $DEFAULTS->{jadetex};
+  $XSLTPROC = $opts{'X'} || $DEFAULTS->{xsltproc};
   $PAGESIZE = $opts{'p'} || $DEFAULTS->{page_size};
   my $type = $opts{'t'} || $DEFAULTS->{'type'};
   my $NoOutput = $opts{'n'};
@@ -751,6 +763,7 @@ Do something with 8-bit characters (treat them as wiggles?).
 
 =head1 VERSION HISTORY
 
+  1.2.0   25 Aug 11     attila  add HTML output
   1.1.0   09 Aug 03     attila  rmap files, wiggles, etc.
   1.0.1   04 Aug 03     attila  random patches
   1.0.0   31 Jul 03     attila  released 1.0.0
