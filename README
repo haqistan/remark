@@ -1,0 +1,83 @@
+                   Time-stamp: <2003-07-31 16:03:34 EDT>
+                         by attila@stalphonsos.com
+  Copyright (c) 1997-2003 by attila@stalphonsos.com.  All Rights Reserved
+={ remark - lazy, sleazy plain text markup }================================
+  This is remark, attila's lazy, sleazy plain text markup system.
+==[ Remark ]================================================================
+  The idea is simple: turn a file that looks more or less like this one
+right here into DocBook XML, and thence into whatever the hell you want.
+Remark supports popping out PS, PDF, and DVI output right now, with the help
+of some external tools.  RTF is easily possible, and HTML is coming.
+=====< Building Remark >====================================================
+  Remark uses the standard perly build system fu:
+  _$ perl Makefile.PL_
+  _$ make_
+  _$ sudo make install_
+  If this does not work for you, please let me know.  I should beef up my
+dependency checking a bit, to make sure that jade or openjade is installed,
+at least, but right now, I don't check.  Also, if you are a BSD user, then
+you might not like Makefile.PL installing stuff into /usr/bin and /usr/lib
+instead of /usr/local/bin and /usr/local/lib, in which case I recommend:
+  _$ perl Makefile.PL PREFIX=/usr/local INSTALLDIRS=site_
+  instead.  This will force remark into /usr/local, as Pan intended.  Other
+than that, there's not much to installing remark.
+=====< Emacs vs. The World >================================================
+  I am an Emacs person.  This means that all of this stuff is slanted
+towards Emacs users, but it's all perfectly usable by others.  It's just
+that the actual process of typing the text up is a bit easier if your editor
+understands all the magic goobers that appear e.g. at the bottom of this
+file (and in the template).
+  If you *are* an Emacs person, then those goobers are very handy.  They
+configure your buffer such that hitting Meta-Q (fill-paragraph-or-region)
+does the right thing: as long as you indent your paragraphs with two spaces
+at the start, your text will stay pretty, and all of the section boundaries
+will be obeyed.
+  It's also a good idea to get into the habit of ending sentences with two
+spaces.  Besides being good form, it also makes the sentence-based movement
+operators (Meta-A, Meta-E) work properly.
+=====< Processing Text >====================================================
+  The remark man page describes things fairly completely; you can also
+view this same information with the command
+  _$ remark -H | more_
+  You'll notice in the text above that I used underscores to set off some
+text that should be in a computer font, and that I've used stars to set
+off text that should be emphasised.  You can also use dollar signs, which
+I intend to be used for equations ala TeX, but it doesn't quite do all
+the right stuff yet... feel free to pitch in!
+  In any event, if you just point remark at a text file with no other
+arguments, it will turn it into DocBook XML:
+  _$ remark README_
+  will turn this file into README.xml.  From there, you can do whatever
+you like, but remark knows how to do some additional post-processing,
+via the _-R_ option:
+  _$ remark -R ps README_
+  will turn this file into README.ps, by using the _jade_ (or _openjade_),
+_jadetex_ and _dvips_ programs, in that order.
+=====< Bugs and Contributions >=============================================
+  Bugs reports and contributions are always welcome.  Please email them to
+attila@stalphonsos.com with [remark] in the subject, so that my automatic
+spam filters (go go gadget bmf! go go gadget procmail!) will know to leave
+it alone.
+  There should be a TODO file in the tarball that has a list of things that
+I would like to work on when I have time to spare.  If you want to pitch in,
+please let me know first, because I may have already started, and it would
+be a waste to have us both doing the same thing without coordinating.
+============================================================================
+$Id: README,v 1.1 2003/07/31 20:12:54 attila Exp $
+
+$Log: README,v $
+Revision 1.1  2003/07/31 20:12:54  attila
+Added README and TODO.  Munged manifest.  Bumped version number to 1.0.0.
+Munged template a bit.
+
+============================================================================
+
+Local variables:
+mode: text
+adaptive-fill-mode: nil
+fill-column: 76
+paragraph-start: "  \\|\\|=="
+indent-tabs-mode: nil
+fill-prefix: ""
+sentence-end-double-space: t
+End:

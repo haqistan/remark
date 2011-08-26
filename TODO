@@ -1,0 +1,14 @@
+	      -*- mode:outline; indent-tabs-mode:nil -*-
+                Time-stamp: <2003-07-31 14:28:56 EDT>
+
+* new types of elements with some sleazy, lazy markup
+** examples (tab-leaders for paras?)
+** tables (tab-leaders followed by a bar?)
+* hyperlinks
+* support more of my old prose stuff
+** dialog (track characters, better formatting)
+** scripts (stage directions)
+* add RTF output support (easy)
+* change tracking
+* fix <author> madness (support email address, try to do something
+  sensibile with the elements docbook gives us)

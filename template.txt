@@ -1,0 +1,68 @@
+                   Time-stamp: <2003-09-28 02:05:05 EDT attila@stalphonsos.com>
+                                 by attila
+  Copyright (c) 1997-2003 by attila@stalphonsos.com.  All Rights Reserved
+={ Document Title }=========================================================
+  Some preface here.  The document title set above will appear as the real
+title in DocBook.  The copyright, authorship and time-stamp from the three
+lines above the first section header will also be grokked and spewed out.
+==[ Chapter ]===============================================================
+  A chapter can have paragraphs in it.
+  Everything can have paragraphs in it that is allowable in DocBook, which
+is pretty much everything.  Except the stuff that isn't.  Sorry.  Perhaps
+some day when I'm not so lazy, I'll write a remark DTD and associated DSSSL
+stylesheets that work on a "better" underlying model.
+  Yeah, right.
+=====< Section >============================================================
+  Sections can have paragraphs inside of them, too.
+  Paragraphs start with two spaces.  They can have *emphasised* text in them
+and it should look right in the output.  There can also be _literal_ text,
+and text in keycaps: $$a=b+1$$.  Equations are on the way, I hope.
+  {{This is a comment. It will get turned into an XML comment.}}
+  [[This is a note; it will appear in the text, but to the left of the
+normal body text and in italics.]]
+  {{If you do not have a file called image.eps in the current directory,
+these next three things won't work when you try to post-process the
+XML into something else.}}
+  ~~image.eps~~ {{that's an embedded image}}
+  ~~72:image.eps~~ {{an embedded image 72x72 pixels}}
+  ~~102,201:image.eps~~ {{an embedded image 102x201 pixels}}
+  Note: If you start a paragraph with one or two words followed a colon, the
+word(s) before the colon will be emphasized.  This *only* works at the start
+of a paragraph, and only when the paragraph looks like it is not a comment
+or other marginalia.
+  When editing remark'ed text like this in Emacs, M-q should always be
+"safe," e.g. it won't screw you over, no matter where you hit it, due to the
+buffer-local settings in Local variables, at bottom.
+  This next section here without a name will be treated as an unnamed
+section with a revision log in it.  You can force it to be spewed out into
+DocBook with the -r option.
+============================================================================
+$Id: template.txt,v 1.4 2003/08/09 14:50:08 attila Exp $
+
+$Log: template.txt,v $
+Revision 1.4  2003/08/09 14:50:08  attila
+Preparing for 1.1.0 release.  Added wiggles, lots of other stuff.
+
+Revision 1.3  2003/07/31 20:13:06  attila
+Added README and TODO.  Munged manifest.  Bumped version number to 1.0.0.
+Munged template a bit.
+
+Revision 1.2  2003/07/27 16:48:06  attila
+Fixed emphasis/keycaps handling in a generic way.  Fixed the template
+cleaned the POD up a bit.  This is 0.2.4, and I'm going to tag it as
+such.
+
+Revision 1.1  2003/07/05 05:31:13  attila
+Lots more fu.  Still isn't working.  Very close.
+
+============================================================================
+
+Local variables:
+mode: text
+adaptive-fill-mode: nil
+fill-column: 76
+paragraph-start: "  \\|\\|=="
+indent-tabs-mode: nil
+fill-prefix: ""
+sentence-end-double-space: t
+End:

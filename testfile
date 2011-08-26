@@ -1,0 +1,73 @@
+  =[ graph 1: state diagram number ]=
+
+                      ###########
+                      #         #
+                      # no      1........
+                      # problem #       .
+              ........2         #       .
+              .       #         #       .
+     #########2#      ###########       .
+     #         #                        .
+     # what is #             ###########1###
+     # the     #             #             #
+     # problem #             # big fucking #
+     #         3.............3  problems   #
+     ###4#######             #  for        #
+        .                    #  everybody  #
+        .                    #             #
+        .                    #######5#######
+        .                           .
+        .                           .
+      ##4########                   .
+      #         #                   .
+      #  the    #                   .
+      #   end   5....................
+      #         #
+      ###########
+
+  =[ graph 1 end ]=
+  =[ figure 1: foo ]=
+
+     y
+  20 y
+     y              ==
+     y              ==
+  15 y              ==
+     y   ==         ==
+     y   ==         ==     ==
+  10 y   ==         ==     ==
+     y   ==         ==     ==
+     y   ==    ==   ==     ==
+   5 y   ==    ==   ==     ==
+     y   ==    ==   ==     ==
+     oxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+        5  10  15  20  25  30  35  40  45  50
+
+
+  =[ figure 1 end ]=
+  =[ figure 2: three dee ]=
+
+                              y
+                              y
+                              y
+                              y
+                              y
+                              y
+                              y
+                              y            *
+                              y           /
+                            * y          /
+                            | y         /
+                            | y        /
+                            | oxxxxxxx/xxxxxxxxxxxxxxxxx
+                            |z  *    /
+                           z|   |   /
+                         z  |   |  /
+                       z    |   | .
+                     z      .   |
+                   z            |
+                 z              |
+               z                |
+             z                  .
+
+  =[ figure 2 end ]=

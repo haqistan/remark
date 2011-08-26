@@ -1,0 +1,776 @@
+#!/usr/bin/perl
+#
+# remark - mark up my semi-ad-hoc text file format
+#
+# copyright (c) 2003 by attila <attila@stalphonsos.com>.  all rights reserved.
+#
+# Time-stamp: <2004-09-30 01:08:29 PDT>
+# $Id: remark,v 1.17 2003/08/12 22:06:27 attila Exp $
+#
+# I have a peculiar text file format that I use to write things.  This
+# program understands my greatly elided form of markup and knows how to
+# turn it into a variety of other markup formats.  The advantage of this
+# to me is that my "native" form of text is really convenient to edit in
+# emacs, which I have been using for over 20 years, and for which I have
+# a nice, comfy template for editing good old plain text (included with
+# this program).
+#
+use strict;
+use vars
+  qw($VERSION $LOG_FP $LOG_FILE $LOG_STDERR $LOG_TSTAMP_FMT $VERBOSE
+     $ORIGINAL_SCRIPT $P @P $DEFAULTS $DESCR $AUTHOR $OPTS $COPYRIGHT
+     $ARGS_DESC $USAGE $QUIET $JADE $PAGESIZE $JADETEX);
+no strict 'refs';
+BEGIN {
+  $ORIGINAL_SCRIPT = $0;
+  my(@P) = split("/", $0);
+  $P = pop(@P);
+  my $dir = join('/', @P);
+  unshift(@INC, $dir);
+  ## If we're being run out of a bin/ directory and there is ../lib, then
+  ## add it to @INC
+  if ($P[$#P] eq 'bin') {
+    my @tmp = @P;
+    pop(@tmp);
+    my $tmp = join("/",@tmp)."/lib";
+    unshift(@INC, $tmp) if (-d $tmp);
+    $tmp .= "/perl";
+    unshift(@INC, $tmp) if (-d $tmp);
+  }
+  my $ndir = "$dir/../lib/perl5/site_perl";
+  unshift(@INC, $ndir) if (-d $ndir);
+}
+##
+use POSIX;
+use Getopt::Std;
+use Remark::Context;
+use Remark::Utils;
+use Remark::Doc;
+##
+sub find_binary {
+  my @path = split(':', $ENV{'PATH'});
+  my @bins = @_;
+  my $bin;
+  foreach my $dir (@path) {
+    foreach $b (@bins) {
+      my $f = qq{$dir/$b};
+      if (-x $f) {
+        $bin = $f;
+        last;
+      }
+    }
+    last if $bin;
+  }
+  return $bin;
+}
+##
+sub find_jade {
+  my $jade = find_binary('openjade', 'jade');
+  return $jade || 'jade';
+}
+##
+sub find_jadetex {
+  my $jadetex = find_binary('hugelatex', 'jadetex');
+  $jadetex ||= 'jadetex';
+  if ($jadetex =~ /hugelatex/) {
+    $jadetex .= q{ '&jadetex'};
+  }
+  return $jadetex;
+}
+##
+sub find_xdvi { return find_binary('xdvi'); }
+sub find_gv { return find_binary('gv'); }
+sub find_xpdf { return find_binary('xpdf', 'acroread'); }
+##
+$VERSION = '1.1.1';
+##
+$LOG_FP = undef;
+$LOG_FILE = undef;
+$LOG_STDERR = 0;
+$LOG_TSTAMP_FMT = '%Y-%m-%d %H:%M:%S';
+$VERBOSE = 0;
+$QUIET = 0;
+$DEFAULTS =
+  { type => 'docbook',
+    result => 'xml',
+    jade => find_jade(),
+    jadetex => find_jadetex(),
+    xdvi => find_xdvi(),
+    gv => find_gv(),
+    xpdf => find_xpdf(),
+    page_size => 'letter',
+  };
+$DESCR = qq{process attila\'s lazy plain-text markup};
+$AUTHOR = q{attila@stalphonsos.com};
+$OPTS = 'hHV:vqSl:t:nruMDPB:R:T:J:j:p:x';
+$COPYRIGHT =
+  '(C) 2003 by attila <attila@stalphonsos.com>. all rights reserved.';
+$ARGS_DESC = 'file...';
+$USAGE = <<__UsAGe__;
+options:
+    -h     print this message and exit
+    -H     print more detailed usage message/man page
+    -V x   set verbosity level to x (0)
+    -v     shorthand for -V 1
+    -q     shorthand for -V 0, plus squelches other msgs
+    -S     log to stderr
+    -l x   log to file x
+    -t x   produce output of type x (DocBook)
+    -n     do not actually produce output, just parse and report
+    -r     output revision log
+    -u     output unnamed material
+    -M     output side material
+    -D     print dots during processing
+    -P     format paragraphs
+    -B x   set MAX_BULLET_WORDS to x (6)
+    -R x   produce result of type x (one of: xml,tex,dvi,ps,pdf... xml)
+    -T x   copy the installed remark template into file x
+    -J x   use x to invoke jade ($DEFAULTS->{jade})
+    -j x   use x to invoke jadetex ($DEFAULTS->{jadetex})
+    -p x   produce printed output of size x ($DEFAULTS->{page_size})
+    -x     invoke appropriate display program on post-processed output
+__UsAGe__
+##
+##
+sub opts_str {
+  my $str = shift(@_);
+  my $dostr = "";
+  my $dvstr = "";
+  my @opts = split("", $str);
+  my $dvcol = 0;
+  my $maxdv = 30;
+  while (my $o = shift(@opts)) {
+    if ($opts[0] eq ':') {
+      shift(@opts);
+      if ($dvcol > $maxdv) {
+        $dvstr .= ("\n" . (" " x (11 + length($P))));
+        $dvcol = 11 + length($P);
+        $maxdv = 65;
+      }
+      $dvstr .= " " if length($dvstr);
+      $dvstr .= "[-$o x]";
+      $dvcol += 7;
+    } else {
+      $dostr .= "[-" unless length($dostr);
+      $dostr .= $o;
+    }
+  }
+  $dostr .= "]" if length($dostr);
+  my $dstr = $dostr;
+  $dstr .= " " if length($dstr);
+  $dstr .= $dvstr;
+  return $dstr;
+}
+##
+sub usage_section {
+  my $ofh = shift(@_);
+  my $fh = shift(@_);
+  my $regexp = shift(@_);
+  my $title = shift(@_) || $P;
+  my $hdr_fmt = shift(@_);
+  my $in_sect = 0;
+  while (<$fh>) {
+    next unless ($in_sect || /^=head1\s+$regexp/);
+    if (/^=head1\s+$regexp/) {
+      $in_sect = 1;
+      print $ofh "  ","-" x 20, "[ $title ]", "-" x 20,"\n";
+      print $ofh sprintf($hdr_fmt, @_) if $hdr_fmt;
+      next;
+    } elsif ($in_sect && /^=cut/) {
+      last;
+    } elsif (/^=head\d+\s*(\S.*)$/) {
+      my $h = psychochomp($1);
+      $h = '========' unless length $h;
+      print $ofh "\n  [ $h ]\n\n";
+    } elsif ($in_sect) {
+      print $ofh $_;
+    }
+  }
+}
+##
+sub usage {
+  my $msg = shift(@_);
+  my $ofh;
+  if (defined($msg)) {
+    $ofh = \*STDERR;
+  } elsif (!scalar(@_)) {
+    $ofh = \*STDERR;
+  } else {
+    $ofh = \*STDOUT;
+  }
+  print $ofh sprintf("%9s: %s\n", "ERROR", $msg) if $msg;
+  print $ofh sprintf("%9s: %s\n", $P, $DESCR);
+  print $ofh sprintf("%9s: %s\n", "version", $VERSION);
+  print $ofh sprintf("%9s: %s\n", "copyright", $COPYRIGHT);
+  print $ofh sprintf("%9s: %s\n", "author", $AUTHOR);
+  print $ofh sprintf("%9s: %s %s %s\n", "usage", $P, opts_str($OPTS),
+                       $ARGS_DESC);
+  if (!scalar(@_)) {
+    print $ofh $USAGE;
+  } else {
+    my $nope = 0;
+    open(ME, "<$0") || ($nope=1);
+    unless ($nope) {
+      usage_section($ofh,\*ME,'DESCRIPTION',  '  DESCRIPTION  ');
+      usage_section($ofh,\*ME,'USAGE',        '     USAGE     ');
+      usage_section($ofh,\*ME,'PREREQUISITES',' PREREQUISITES ');
+      usage_section($ofh,\*ME,'LANGUAGE',     'INPUT LANGUAGE ');
+      usage_section($ofh,\*ME,'VERSION',      'VERSION HISTORY',
+                    "  %-7s   %-9s   %-7s %s\n", "VERS", "WHEN",
+                    "WHO", "WHAT");
+      close(ME);
+    }
+  }
+  exit(defined($msg));
+}
+##
+sub ts {
+  my $fmt = $LOG_TSTAMP_FMT || "%Y-%m-%d %H:%M:%S";
+  return POSIX::strftime($fmt, localtime(time));
+}
+##
+sub log_msg {
+  my $lvl = shift(@_);
+  return unless $VERBOSE >= $lvl;
+  my $logmsg = "$P: " . ts() . " [$lvl] @_\n";
+  print STDERR $logmsg if $LOG_STDERR;
+  if ($LOG_FILE && !$LOG_FP) {
+    $LOG_FP = new IO::File(">> $LOG_FILE")
+      or die "$P: could not create log file $LOG_FILE: $!\n";
+  }
+  print $LOG_FP $logmsg if $LOG_FP;
+}
+##
+sub toXXX1 {
+  my $infile = shift(@_);
+  my $infmt = shift(@_);
+  my $tofmt = shift(@_);
+  my $cmdname = shift(@_);
+  my $oopt = shift(@_);
+  my $eoopt = shift(@_);
+  my $quiet = shift(@_) || $QUIET;
+  my $outfile = $infile;
+  $outfile =~ s/\.$infmt$//;
+  $outfile .= '.' . $tofmt;
+  $oopt .= qq{ $outfile } if length($oopt);
+  $eoopt .= qq{ $outfile } if defined($eoopt);
+  my $tmplog = qq{/tmp/remark.to$tofmt.$$};
+  my $cmd = qq{$cmdname $oopt$infile$eoopt >$tmplog 2>&1};
+  my $death;
+  print STDERR "[$cmd" if $VERBOSE && !$quiet;
+  system(qq{/bin/sh -c "$cmd"}) == 0 or ($death=$!);
+  if ($death) {
+    print " FAILED: $death]\n" if $VERBOSE && !$quiet;
+    $outfile = undef unless -f $outfile;
+  } else {
+    print STDERR " -OK]\n" if $VERBOSE && !$quiet;
+  }
+#  system("cat $tmplog") if ($VERBOSE && (-f $tmplog));
+  unlink($tmplog) if -f $tmplog;
+  print "[$infile => $outfile]\n" if !$quiet && (-f $outfile);
+  return $outfile;
+}
+##
+sub toTeX {
+  my $xml = shift @_;
+  my $DSSSL = q{/usr/local/share/sgml/docbook/dsssl/modular};
+  $DSSSL = q{/usr/share/sgml/docbook/dsssl-stylesheets} unless -d $DSSSL;
+  $DSSSL = q{/usr/share/sgml/docbook/stylesheet/dsssl/modular} 
+    unless -d $DSSSL;
+  die qq{$P: could not find DSSSL stylesheets ($DSSSL)\n} unless -d $DSSSL;
+  my $texdsl = qq{$DSSSL/print/notoc.dsl};
+  return toXXX1($xml,'xml','tex',qq{$JADE -t tex -d $texdsl});
+}
+##
+sub toDVI {
+  my $tex = shift @_;
+  my $dvi;
+  foreach my $i (1 .. 3) {
+    $dvi = toXXX1($tex,'tex','dvi',qq{$JADETEX},undef,undef,($i < 3));
+  }
+  return $dvi;
+}
+##
+sub toPS {
+  return toXXX1(shift(@_),'dvi','ps',qq{dvips -t $PAGESIZE},q{-o});
+}
+##
+sub toPDF {
+  return toXXX1(shift(@_),'ps','pdf',qq{ps2pdf},undef,'');
+}
+##
+sub rem0 {
+  my %hash = @_;
+  my @rem0 = ();
+  foreach my $key (keys %hash) {
+    push @rem0, $key if $hash{$key};
+  }
+  return @rem0;
+}
+##
+sub post_process {
+  my($fn,$opts) = @_;
+  unless (-f $fn) {
+    print STDERR "[Cannot postprocess nonexistant $fn]\n";
+    return;
+  }
+  my $rtype = $opts->{R} || $DEFAULTS->{result};
+  $rtype = lc($rtype);
+  print STDERR "[Result type: $rtype]\n" unless $QUIET;
+  return undef if $rtype eq 'xml';
+  my %ctbl = (TEX => 0, DVI => 1, PS => 2, PDF => 3);
+  my %conv = (TeX => 1, DVI => 0, PS => 0, PDF => 0);
+  $conv{DVI} = 1                if $rtype ne 'tex';
+  $conv{PS}  = 1                if $rtype eq 'ps';
+  ($conv{PDF},$conv{PS})=(1,1)  if $rtype eq 'pdf';
+  print STDERR "[",join(" -> ",sort { $ctbl{uc($a)} <=> $ctbl{uc($b)} }
+                        (rem0(%conv))),"]\n" unless $QUIET;
+  my $TeXfile = toTeX($fn)      if $conv{TeX};
+  my $DVIfile = toDVI($TeXfile) if $conv{DVI} && defined($TeXfile);
+  my $PSfile = toPS($DVIfile)   if $conv{PS}  && defined($DVIfile);
+  my $PDFfile = toPDF($PSfile)  if $conv{PDF} && defined ($PSfile);
+  return $PDFfile || $PSfile || $DVIfile || $TeXfile;
+}
+##
+sub copy_template {
+  my $onto = shift(@_);
+  die qq{$P: cannot overwrite existing file "$onto" - move it away, please\n}
+    if -f $onto;
+  my $tmpf;
+  my $path = $INC{'Remark/Doc.pm'};
+  die qq{$P: cannot locate template!\n} unless (-f $path);
+  my @tarts = split('/', $path);
+  pop @tarts;
+  push @tarts, 'template.txt';
+  $tmpf = join('/', @tarts);
+  die qq{$P: template file "$tmpf" not there\n} unless -f $tmpf;
+  open(T, "< $tmpf") || die qq{$P: could not open template "$tmpf": $!\n};
+  open(O, "> $onto") || die qq{$P: could not open "$onto" for writing: $!\n};
+  while (<T>) {
+    print O;
+  }
+  close(T);
+  close(O);
+  print STDERR "[$tmpf => $onto]\n" unless $QUIET;
+}
+##
+sub preview_base_cmd {
+  my $file = shift(@_);
+  my @parts = split('\.', $file);
+  my $ext = pop @parts if scalar(@parts) > 1;
+  return undef unless $ext;
+  $ext = lc($ext);
+  return $DEFAULTS->{'xdvi'}                    if $ext eq 'dvi';
+  return $DEFAULTS->{'gv'}                      if $ext eq 'ps';
+  return $DEFAULTS->{'xpdf'}                    if $ext eq 'pdf';
+  return undef;
+}
+##
+sub preview_result {
+  my($result,$opth) = @_;
+  return unless $opth->{'x'};
+  my $base = preview_base_cmd($result);
+  unless ($base) {
+    print STDERR "[No previewer for $result]\n" unless $QUIET;
+    return;
+  }
+  my $cmd = qq{$base $result};
+  print STDERR "[Preview: $cmd]\n"              unless $QUIET;
+  system($cmd);                         # screw errors
+  print STDERR "[Preview finished]\n"           unless $QUIET;
+}
+## Main Program ############################################################
+main: {
+  my %opts;
+  usage() unless getopts($OPTS, \%opts);
+  usage(undef,1) if $opts{'H'};
+  usage(undef) if $opts{'h'};
+  usage() if !scalar(@ARGV) && !$opts{'T'};
+  $VERBOSE = $opts{'V'} || $opts{'v'};
+  $QUIET = $opts{'q'};
+  $VERBOSE = 0 if $QUIET;
+  $LOG_STDERR = $opts{'S'};
+  $LOG_FILE = $opts{'l'};
+  $JADE = $opts{'J'} || $DEFAULTS->{jade};
+  $JADETEX = $opts{'j'} || $DEFAULTS->{jadetex};
+  $PAGESIZE = $opts{'p'} || $DEFAULTS->{page_size};
+  my $type = $opts{'t'} || $DEFAULTS->{'type'};
+  my $NoOutput = $opts{'n'};
+  my $OutputRevisionLog = $opts{'r'};
+  my $OutputUn = $opts{'u'};
+  my $Dots = $opts{'D'};
+  my $FormatParas = $opts{'P'};
+  my $SideMaterial = $opts{'M'};
+  my $NoPreface = $opts{'N'};
+  my $MaxBulletWords = $opts{'B'};
+  my $oldh = select(STDOUT); $| = 1; select($oldh);
+  print STDERR "[Verbosity: $VERBOSE]\n" if $VERBOSE;
+  if ($opts{'T'}) {
+    copy_template($opts{'T'});
+    exit(0);
+  }
+  my $ctx =
+    new Remark::Context(
+      verbosity => $VERBOSE,
+      type => $type,
+      revision_log => $OutputRevisionLog,
+      unnamed => $OutputUn,
+      dots => $Dots,
+      format_paras => $FormatParas,
+      side_material => $SideMaterial,
+      no_preface => $NoPreface,
+      max_bullet_words => $MaxBulletWords,
+    );
+  $ctx->init_graphy_stuff(\%opts);
+  foreach my $fn (@ARGV) {
+    $fn = undef if $fn eq '-';
+    my $doc = new Remark::Doc(context => $ctx, input_file => $fn);
+    $doc->process_stream();
+    $doc->describe(\*STDERR) if $VERBOSE;
+    $doc->output($fn,'docbook') unless $NoOutput;
+    my $result = post_process($doc->outfile_name($fn), \%opts);
+    print STDERR "[Final result: $result]\n" if defined($result) && !$QUIET;
+    preview_result($result, \%opts);
+  }
+  exit(0);
+}
+__END__
+
+=head1 NAME
+
+remark - process attila's lazy plain-text markup
+
+=cut
+
+=head1 SYNOPSIS
+
+remark [-options] filenames...
+
+=cut
+
+=head1 DESCRIPTION
+
+Remark turns plain-text file that use my lazy plain-text markup into a
+variety of formats, the most useful of which is DocBook SGML, suitable
+for processing by e.g. OpenJADE using DSSSL.  I find writing text in
+my remark format easier on the eyes, and the fingers, and have tried
+to make the input format as intuitive as possible, but not more so.
+
+Naturally, as human intuitions vary in quantity, and quality, your
+mileage may vary.
+
+Remark supports quite a lot of things, but not all possible things.
+There are markers for inserting figures, making lists, various kinds
+of dialog, marginalia of various types, and so on.  As my main use of
+remark is in the production of prose, and scripts, which frequently
+contain dialog between fictional characters, I have included
+facilities for make that kind of text as simple to produce as
+possible.  One side effect of this approach is that there is a good
+deal more meta-information in a typical remark input file than there
+often is in other formats, e.g. you can extract the names of all the
+main characters in a story quite effortlesly, assuming you follow
+certain conventions.
+
+=cut
+
+=head1 USAGE
+
+If no files are present on the command line, we read our standard
+input.  We take the following options:
+
+        -h, -H  print a short usage message, or this, longer, help
+
+        -V x    set the verbosity level to x
+        -v      synonym for -V 1
+
+                the verbosity level controls how much debugging output
+                remark produces during its operation; higher numbers
+                produce more output.
+
+        -T x    instead of processing input, copy the installed template.txt
+                file onto file x, e.g. to start a fresh remark document.
+
+        -S      log to stderr
+        -l x    log to file x
+        -D      print dots while undertaking a long-running activity
+
+                -S and -l are independent of one another - you can
+                log to both stderr and a file at the same time.
+
+        -t x    produce markup of type x; default is xml, which is
+                currently the only supported type.  Eventually, we will
+                also support sgml and html output.
+
+        -R x    post-process markup and produce a result of x; default
+                is no postprocessing (e.g. xml output).
+
+                after remark produces a file in some formal markup language,
+                such as xml, the result can then be post-processed
+                automatically, presume the presence of the required tools.
+                x can be one of: tex, dvi, ps, or pdf.  See the section
+                on PREREQUISITES (below) for details on the tools required
+                to produce each kind of output.
+
+        -n      do not actually do anything, just parse the input and
+                say what we would've done.
+
+        -r      do not suppress the revision log section
+        -u      do not suppress unnamed material
+        -M      do not suppress side material
+        -B x    set MAX_BULLET_WORDS to x (default=6)
+
+                remark input files can have several kinds of material,
+                in addition to the standard chapter/section/paragraph
+                objects, plus embedded references (e.g. images).
+                Remark is meant for serious writing, and authors often
+                have need of places to keep side material, references,
+                and random bits of text that may or may not be
+                included in the final result.  In addition, if you use
+                the standard remark template, you will see that RCS
+                revision logs can be embedded in a remark-ed document;
+                it can be useful to have these logs appear in the
+                printed output, e.g. of a draft in progress.
+
+        -P      format paragraph text via the fmt(1) command
+
+        -J x    use command x to invoke jade
+
+                by default, we search your PATH for either openjade,
+                or jade, in that order.
+
+        -j x    use command x to invoke jadetex
+
+                if you have hugelatex installed (e.g. from BSD ports),
+                we use: hugelatex '&jadetex'
+                otherwise, we run jadetex.  This is to avoid problems
+                with a small pool size in the default jadetex dump.
+                Your mileage may definitely vary on this one; please
+                inform me of problems, or better solutions.
+
+        -p x    produce printed output of size x
+
+                by default, we tell dvips to produce letter-sized
+                output; say -p a4 for A4 output
+
+        -x      invoke a viewer of some sort on post-processing results
+
+                we should use MIME/mailcap, but right now we just
+                suss out the right thing (xdvi, gv, xpdf, ...)
+
+=cut
+
+=head1 PREREQUISITES
+
+Since I generally use the DocBook output format, some sort of DocBook
+processing tools would probably be useful; some of the other target
+output types are not yet implemented, so it's best to go that route if
+you can.  I use openjade and docbook-dsssl from both the OpenBSD and
+FreeBSD ports trees, and under various Linux distributions.
+
+For post-processing, the following tools have been used and tested:
+
+        jadetex         for turning jade TeX output into DVI
+                        (this is in ports under BSD and available as
+                        an RPM for linux).
+
+        dvips           for turning DVI files into PostScript
+
+        ps2pdf          for turning PostScript into PDF 1.2 or 1.3
+                        (this program seems to come with ghostscript)
+
+=cut
+
+=head1 LANGUAGE
+
+The best way to learn what remark wants from you is to look at the
+template.txt file that comes with remark.  Do something like
+
+        $ remark -T foo.txt
+
+to create a new file called foo.txt based on the template.
+
+=head2 Containers
+
+There is a container hierarchy of types into which each piece of input
+is placed exactly once.  At the top, we have Documents, which consist
+of Chapters, which, in turn, have Sections, which, finally, contain
+Paragraphs.  Paragraphs contain raw text, as well as other kinds of
+embedded information, such as figures and links to e.g. the web.  All
+of these containers have associated with them some meta-information,
+such as a Chapter's name, and so on.
+
+The markup is designed to be as simple as possible to follow with the
+naked eye, so to speak.  By this, I mean that it should feel perfectly
+natural to read the plain text input file; there is not an abundance
+of odd markup, and when it is necessary to set some piece of text off
+from another (e.g. a commentary about the text, embedded as a note in
+the document by the author), the meaning of the particular markup used
+should be obvious without consulting e.g. this manual.
+
+Paragraphs always start with two spaces.  The extend over many lines,
+and and stop where the next paragraph starts, or the enclosing
+container ends.  If you use the Emacs text editor (I highly recommend
+it), then the local variable settings at the bottom of the template
+are sufficient for you to edit remark'ed text naturally, because they
+configure Emacs' idea of where paragraphs and sentences start and end
+in such a way as to coincide exactly with remark's ideas on the
+subject.
+
+Container boundries of any kind always start with at least two equal
+signs at the start of a line.  Boundries always look like
+
+     ===[ foo ]===
+
+where foo is the name (or some other meta-information) of the
+boundary, e.g. a chapter name.  The number of equal signs is
+unimportant, but as the author believes that 80 columns is a physical
+constant of the Universe, the default template runs the equal signs on
+every boundary out to the standard 76 columns, so that you can see
+where the paragraph break-point is (again, if you use Emacs, 76
+columns is where it will be by default using the template).  The
+type of bracket used to set off the name is used to determine what
+kind of container (Preface, Chapter, Section, etc.) we are dealing with.
+
+        BRACKET         CONTAINER
+        [ ] (square)    Chapter
+        { } (curly)     Preface (really a special Chapter)
+        < > (angle)     Section
+        none            unnamed Section, depending on context
+
+=head2 Wiggles and other embedded markup
+
+Paragraph text can contain various sorts of embedded markup.
+This can be overridden by the user using rmap files, which are
+essentially text files that contain lines which look like:
+
+        pat => subst
+
+where subst can contain back-references and bits of perl code.
+There are two such maps currently used:
+
+        the wiggle map
+        the elt map
+
+The wiggle map is used to map ordinary characters or sequences of
+characters into character entities, e.g. ampersand becomes &amp; for
+XML.  I call these wiggles, because they are the electronic equivalent
+of little wiggles in ink that I draw in text when I use a pen (which,
+at this point, is hardly ever).  The default wiggle map looks like:
+
+        & => &amp;
+        < => &lt;
+        > => &gt;
+        ~~(\d+):([^~]+)~~ =>
+          <inlinegraphic width="$1" depth="$1" fileref="$2"></inlinegraphic>
+        ~~(\d+),(\d+):([^~]+)~~ =>
+          <inlinegraphic width="$1" depth="$2" fileref="$3"></inlinegraphic>
+        ~~([^~]+)~~ =>
+          <inlinegraphic fileref="$1"></inlinegraphic>
+
+The last three rules in the default wiggle map allow you to include
+figures, optionally specifying a bounding box:
+
+For instance:
+
+  A figure follows: ~~foo.eps~~
+
+turns into an inlinegraphic element when producing DocBook.  Either
+one or both dimensions of a bounding box for the figure can be
+specified as parameters:
+
+  ~~72:image.eps~~ {{an embedded image 72x72 pixels}}
+  ~~102,201:image.eps~~ {{an embedded image 102x201 pixels}}
+
+You can override the default wiggle map by creating a file called
+wiggle.rmap in a subdirectory of the current directory called
+C<.remark>, or in a C<.remark> directory in your home directory, if
+one does not exist in the current directory.  The same is true for the
+other two maps (elt.rmap and wiggle.rmap).  The contents of an rmap
+file are always merged into the default map, and the order of mappings
+is preserved, so if you want to override the default wiggles, you must
+provide new mappings for them.  You can turn a wiggle off by mapping
+it to the empty string.
+
+The elt map is used to map balanced pairs of special character
+sequences into elements that enclose the text so surrounded; such elt
+remappings only occur in the scope of a single paragraph The map
+targets are the names of elements.  The default elt map contains:
+
+        * => emphasis
+        _ => literal
+        $$ => keycap
+
+So,
+        The next $$word$$ will appear in a keycap element
+
+causes word to appear inside of a <keycap>...</keycap> element.  You
+can merge new elements into the elt map by creating an elt.rmap file
+just like the wiggle.rmap file, and the same rules apply.
+
+=head2 More random ad-hocery
+
+Text between doubled square brackets is treated as an author's
+note/comment, and turns into whatever is the best thing in the output
+markup, e.g. a <comment> element in DocBook XML.  Text between doubled
+curly brackets becomes a literal comment, e.g. <!-- foo --> in XML.
+
+Bullets can be generated using a leading special character in
+a paragraph:
+
+        SPECIAL         LEVEL
+        *               1
+        -               2
+        +               3
+
+  * this is a first-level bullet
+   - this is a second-level bullet
+    + this is a third-level bullet
+
+There is also some automagical grokking of text that goes on, mainly
+in the leading material that appears in my template; for instance, the
+Copyright notice at the very top of the standard template is noticed
+and parsed by remark, which spits it out in the header of the DocBook
+XML output.  Likewise for the time-stamp, and author ("by foo...").
+
+=cut
+
+=head1 BUGS/TODO
+
+Re-constitute my old, crufty dialogue following stuff.
+
+Indexing, ToC, etc.
+
+Something sensible for inline examples and code snippets
+
+Something sensible for simple tables (DocBook is a bit bizarre on that
+front).
+
+Do something with 8-bit characters (treat them as wiggles?).
+
+=cut
+
+=head1 VERSION HISTORY
+
+  1.1.0   09 Aug 03     attila  rmap files, wiggles, etc.
+  1.0.1   04 Aug 03     attila  random patches
+  1.0.0   31 Jul 03     attila  released 1.0.0
+  0.2.5   31 Jul 03     attila  added -J
+  0.2.4   27 Jul 03     attila  finally fixed emphasis/keycap handling
+  0.2.3   25 Jul 03     attila  fixed Doc title, wrong documentation
+  0.2.2   22 Jul 03     attila  better docs, pre-beta release
+  0.2.1   20 Jul 03     attila  fixed post processing, sorta
+  0.2.0   04 Jul 03     attila  modularized
+  0.1.1   17 Mar 02     attila  fixed some bugs
+  0.1.0   01 Oct 01     attila  created
+
+=cut
+
+##
+# Local variables:
+# tab-width: 2
+# perl-indent-level: 2
+# cperl-indent-level: 2
+# indent-tabs-mode: nil
+# comment-column: 40
+# End:
+##
